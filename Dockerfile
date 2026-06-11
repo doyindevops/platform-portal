@@ -1,39 +1,26 @@
 FROM node:20-bookworm-slim
 
-RUN apt-get update && apt-get install -y \
-    python3 \
-    g++ \
-    build-essential \
-    libsqlite3-dev \
-    pkg-config \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 g++ build-essential libsqlite3-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable && corepack prepare yarn@4.4.1 --activate
 
+RUN mkdir -p /app && chown node:node /app
+USER node
 WORKDIR /app
 
-COPY package.json yarn.lock .yarnrc.yml ./
-COPY .yarn ./.yarn
-COPY packages ./packages
-COPY plugins ./plugins
+COPY --chown=node:node yarn.lock package.json .yarnrc.yml ./
+COPY --chown=node:node .yarn ./.yarn
+COPY --chown=node:node packages/backend/dist/skeleton.tar.gz ./
+RUN tar xzf skeleton.tar.gz && rm skeleton.tar.gz
 
-RUN yarn install 2>&1 | grep -v "YN0007" || true
+RUN yarn workspaces focus --all --production || (cat /tmp/xfs-*/build.log; exit 1)
 
-COPY . .
-
-RUN yarn tsc 2>/dev/null; exit 0
-RUN yarn build:backend 2>&1 || yarn workspace backend build 2>&1 || true
-
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 backstage --ingroup nodejs
-
-RUN chown -R backstage:nodejs /app
-
-USER backstage
-
-EXPOSE 7007
+COPY --chown=node:node packages/backend/dist/bundle.tar.gz app-config.yaml app-config.production.yaml ./
+RUN tar xzf bundle.tar.gz && rm bundle.tar.gz
 
 ENV NODE_ENV=production
+EXPOSE 7007
 
-CMD ["node", "packages/backend/dist/index.cjs.js", "--config", "app-config.yaml"]
+CMD ["node", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.production.yaml"]

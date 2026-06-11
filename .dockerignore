@@ -1,5 +1,7 @@
+
 .git
 node_modules
 packages/*/node_modules
 packages/*/dist
+!packages/backend/dist
 *.local.yaml
